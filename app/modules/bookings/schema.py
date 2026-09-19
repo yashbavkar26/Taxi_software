@@ -1,0 +1,76 @@
+"""Schema and column mappings for the bookings table."""
+
+from app.common.normalizer import ColumnDef
+from app.common.schema_base import TableSchema
+
+BOOKINGS_COLUMNS = {
+    "received": ColumnDef(db_column="received", data_type="boolean", is_required=False, max_length=50),
+    "sl_no": ColumnDef(db_column="sl_no", data_type="integer", is_required=False),
+    "name": ColumnDef(db_column="name", data_type="string", is_required=False, max_length=255),
+    "guest_name": ColumnDef(db_column="guest_name", data_type="string", is_required=False, max_length=255),
+    "guest_mobile_no": ColumnDef(db_column="guest_mobile_no", data_type="phone", is_required=False, max_length=20),
+    "travel_date": ColumnDef(db_column="travel_date", data_type="date", is_required=False),
+    "pickup_location": ColumnDef(db_column="pickup_location", data_type="string", is_required=False, max_length=255),
+    "drop_location": ColumnDef(db_column="drop_location", data_type="string", is_required=False, max_length=255),
+    "start_time": ColumnDef(db_column="start_time", data_type="time", is_required=False),
+    "return_time": ColumnDef(db_column="return_time", data_type="time", is_required=False),
+    "reason": ColumnDef(db_column="reason", data_type="string", is_required=False),
+    "driver_name": ColumnDef(db_column="driver_name", data_type="string", is_required=False, max_length=255),
+    "contact": ColumnDef(db_column="contact", data_type="phone", is_required=False, max_length=20),
+}
+
+BOOKINGS_HEADER_ALIASES = {
+    "received": "received",
+    "sl.no.": "sl_no",
+    "sl. no.": "sl_no",
+    "sl.no": "sl_no",
+    "sl no": "sl_no",
+    "sl_no": "sl_no",
+    "serial no": "sl_no",
+    "name": "name",
+    "guest": "guest_name",
+    "guest name": "guest_name",
+    "guest mobile no.": "guest_mobile_no",
+    "guest mobile no": "guest_mobile_no",
+    "guest mobile": "guest_mobile_no",
+    "travel date": "travel_date",
+    "date": "travel_date",
+    "from": "pickup_location",
+    "pickup": "pickup_location",
+    "pickup location": "pickup_location",
+    "to": "drop_location",
+    "drop": "drop_location",
+    "drop location": "drop_location",
+    "start time": "start_time",
+    "return time": "return_time",
+    "reason": "reason",
+    "driver": "driver_name",
+    "driver name": "driver_name",
+    "contact": "contact",
+    "driver contact": "contact",
+}
+
+CANONICAL_BOOKING_HEADERS = [
+    "Received",
+    "Sl.No.",
+    "Name",
+    "Guest",
+    "Guest Mobile No.",
+    "Travel Date",
+    "From",
+    "To",
+    "Start Time",
+    "Return Time",
+    "Reason",
+    "Driver",
+    "Contact",
+]
+
+BOOKINGS_SCHEMA = TableSchema(
+    table_name="bookings",
+    primary_key="id",
+    columns=BOOKINGS_COLUMNS,
+    header_aliases=BOOKINGS_HEADER_ALIASES,
+    required_headers={"guest_name", "travel_date", "driver_name"},
+    generated_columns={"driver_message", "guest_message"},
+)

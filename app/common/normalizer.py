@@ -1,0 +1,183 @@
+"""Data normalization and sanitization utilities for Excel cell values."""
+
+import datetime
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any, Optional
+import dateutil.parser
+
+
+@dataclass
+class ColumnDef:
+    """Definition of a table column and its normalization rules."""
+
+    db_column: str
+    data_type: str  # 'string', 'integer', 'date', 'time', 'phone', 'boolean'
+    is_required: bool = False
+    is_unique: bool = False
+    max_length: Optional[int] = None
+
+
+def normalize_string(val: Any) -> Optional[str]:
+    """Trim whitespace and convert empty strings to None."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s if s else None
+
+
+def normalize_integer(val: Any) -> Optional[int]:
+    """Normalize numeric cell to integer, preserving 0 and avoiding None for 0."""
+    if val is None:
+        return None
+    if isinstance(val, (int, bool)):
+        if isinstance(val, bool):
+            return 1 if val else 0
+        return val
+    if isinstance(val, float):
+        if val.is_integer():
+            return int(val)
+        return int(val)
+    if isinstance(val, Decimal):
+        return int(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        f = float(s)
+        return int(f)
+    except (ValueError, OverflowError) as e:
+        raise ValueError(f"'{val}' is not a valid integer") from e
+
+
+def normalize_phone(val: Any) -> Optional[str]:
+    """Normalize phone/mobile numbers cleanly without trailing .0 from Excel floats."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, float):
+        if val.is_integer():
+            val = int(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.endswith(".0") and s[:-2].isdigit():
+        s = s[:-2]
+    return s
+
+
+def normalize_date(val: Any) -> Optional[datetime.date]:
+    """Normalize dates from datetime, date, or string representations."""
+    if val is None:
+        return None
+    if isinstance(val, datetime.datetime):
+        return val.date()
+    if isinstance(val, datetime.date):
+        return val
+    s = str(val).strip()
+    if not s:
+        return None
+
+    formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%d.%m.%Y",
+        "%b %d, %Y",
+        "%d %b %Y",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+
+    try:
+        dt = dateutil.parser.parse(s, dayfirst=True)
+        return dt.date()
+    except (ValueError, OverflowError) as e:
+        raise ValueError(f"'{val}' is not a valid date") from e
+
+
+def normalize_time(val: Any) -> Optional[datetime.time]:
+    """Normalize time values from time, datetime, timedelta, or string representations."""
+    if val is None:
+        return None
+    if isinstance(val, datetime.datetime):
+        return val.time()
+    if isinstance(val, datetime.time):
+        return val
+    if isinstance(val, datetime.timedelta):
+        total_seconds = int(val.total_seconds()) % 86400
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return datetime.time(hours, minutes, seconds)
+    s = str(val).strip()
+    if not s:
+        return None
+
+    formats = [
+        "%H:%M:%S",
+        "%H:%M",
+        "%I:%M %p",
+        "%I:%M:%S %p",
+        "%I:%M%p",
+        "%I:%M:%S%p",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(s, fmt).time()
+        except ValueError:
+            pass
+
+    try:
+        dt = dateutil.parser.parse(s)
+        return dt.time()
+    except (ValueError, OverflowError) as e:
+        raise ValueError(f"'{val}' is not a valid time format") from e
+
+
+def normalize_boolean(val: Any) -> Optional[str]:
+    """Normalize boolean value into MySQL-compatible string representation ('True'/'False')."""
+    if val is None:
+        return "False"
+    if isinstance(val, bool):
+        return "True" if val else "False"
+    s = str(val).strip().lower()
+    if not s:
+        return "False"
+    if s in ("true", "1", "yes", "y", "received"):
+        return "True"
+    if s in ("false", "0", "no", "n"):
+        return "False"
+    return str(val).strip()
+
+
+def normalize_cell(val: Any, col_def: ColumnDef) -> Any:
+    """Route value normalization according to target column definition."""
+    if col_def.data_type == "string":
+        res = normalize_string(val)
+        if res is not None and col_def.max_length and len(res) > col_def.max_length:
+            return res[: col_def.max_length]
+        return res
+    if col_def.data_type == "integer":
+        return normalize_integer(val)
+    if col_def.data_type == "phone":
+        res = normalize_phone(val)
+        if res is not None and col_def.max_length and len(res) > col_def.max_length:
+            return res[: col_def.max_length]
+        return res
+    if col_def.data_type == "date":
+        return normalize_date(val)
+    if col_def.data_type == "time":
+        return normalize_time(val)
+    if col_def.data_type == "boolean":
+        res = normalize_boolean(val)
+        if res is not None and col_def.max_length and len(res) > col_def.max_length:
+            return res[: col_def.max_length]
+        return res
+
+    return val
