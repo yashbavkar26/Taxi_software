@@ -6,7 +6,7 @@ from app.common.schema_base import TableSchema
 BOOKINGS_COLUMNS = {
     "received": ColumnDef(db_column="received", data_type="boolean", is_required=False),
     "sl_no": ColumnDef(db_column="sl_no", data_type="integer", is_required=False),
-    "name": ColumnDef(db_column="name", data_type="string", is_required=False, max_length=255),
+    "coordinator": ColumnDef(db_column="coordinator", data_type="string", is_required=False, max_length=255),
     "guest_name": ColumnDef(db_column="guest_name", data_type="string", is_required=False, max_length=255),
     "guest_mobile_no": ColumnDef(db_column="guest_mobile_no", data_type="phone", is_required=False, max_length=20),
     "travel_date": ColumnDef(db_column="travel_date", data_type="date", is_required=False),
@@ -17,17 +17,24 @@ BOOKINGS_COLUMNS = {
     "reason": ColumnDef(db_column="reason", data_type="string", is_required=False),
     "driver_name": ColumnDef(db_column="driver_name", data_type="string", is_required=False, max_length=255),
     "contact": ColumnDef(db_column="contact", data_type="phone", is_required=False, max_length=20),
+    "vehicle_type": ColumnDef(db_column="vehicle_type", data_type="string", is_required=False, max_length=255),
 }
 
 BOOKINGS_HEADER_ALIASES = {
     "received": "received",
+    "recived": "received",
     "sl.no.": "sl_no",
     "sl. no.": "sl_no",
     "sl.no": "sl_no",
     "sl no": "sl_no",
     "sl_no": "sl_no",
     "serial no": "sl_no",
-    "name": "name",
+    "name": "coordinator",
+    "coordinator": "coordinator",
+    "coordinator name": "coordinator",
+    "co odrinator": "coordinator",
+    "co-ordinator": "coordinator",
+    "coord": "coordinator",
     "guest": "guest_name",
     "guest name": "guest_name",
     "guest mobile no.": "guest_mobile_no",
@@ -48,12 +55,16 @@ BOOKINGS_HEADER_ALIASES = {
     "driver name": "driver_name",
     "contact": "contact",
     "driver contact": "contact",
+    "vehicle type": "vehicle_type",
+    "vehicle_type": "vehicle_type",
+    "veh type": "vehicle_type",
+    "vehicle": "vehicle_type",
 }
 
 CANONICAL_BOOKING_HEADERS = [
     "Received",
     "Sl.No.",
-    "Name",
+    "Coordinator",
     "Guest",
     "Guest Mobile No.",
     "Travel Date",
@@ -64,6 +75,7 @@ CANONICAL_BOOKING_HEADERS = [
     "Reason",
     "Driver",
     "Contact",
+    "Vehicle Type",
 ]
 
 BOOKINGS_SCHEMA = TableSchema(
@@ -72,5 +84,5 @@ BOOKINGS_SCHEMA = TableSchema(
     columns=BOOKINGS_COLUMNS,
     header_aliases=BOOKINGS_HEADER_ALIASES,
     required_headers={"guest_name", "travel_date", "driver_name"},
-    generated_columns={"driver_message", "guest_message"},
+    generated_columns={"driver_message", "guest_message", "driver message", "guest message"},
 )

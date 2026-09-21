@@ -24,7 +24,7 @@ class BookingRepository:
         columns = [
             "received",
             "sl_no",
-            "name",
+            "coordinator",
             "guest_name",
             "guest_mobile_no",
             "travel_date",
@@ -35,6 +35,7 @@ class BookingRepository:
             "reason",
             "driver_name",
             "contact",
+            "vehicle_type",
         ]
 
         cols_str = ", ".join(f"`{c}`" for c in columns)

@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     received BOOLEAN DEFAULT FALSE,
     sl_no INT,
-    name VARCHAR(255),
     coordinator VARCHAR(255),
     guest_name VARCHAR(255),
     guest_mobile_no VARCHAR(20),

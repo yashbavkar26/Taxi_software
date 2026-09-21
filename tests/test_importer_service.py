@@ -224,6 +224,7 @@ class TestExcelImportService:
         inserted_params = booking_params[0]
         assert inserted_params[0] is False
         assert inserted_params[1] == 0
+        assert inserted_params[2] == "A"
 
     # 9. Invalid numeric value reports exact sheet and row
     def test_invalid_numeric_reports_sheet_and_row(self, make_workbook, sample_booking_headers):
@@ -357,3 +358,46 @@ class TestExcelImportService:
         cur_fail = MockCursor()
         repo_fail.insert_batch(cur_fail, [{"driver": "Rahul", "contact": "8007029326"}])
         assert "ON DUPLICATE" not in cur_fail.executed_queries[0]
+
+    # 16. Import with coordinator and vehicle_type headers
+    def test_import_with_coordinator_and_vehicle_type(self, make_workbook, sample_contacts_headers):
+        booking_headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vehicle Type",
+        ]
+        file_path = make_workbook(
+            {
+                "Contacts": [
+                    sample_contacts_headers,
+                    [1, "Abhishek", 8830087698],
+                ],
+                "Feb 01": [
+                    booking_headers,
+                    [True, 1, "CoordX", "Guest1", "999", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "Abhishek", "8830087698", "Innova"],
+                ],
+            }
+        )
+        service, mock_db = self._create_service()
+        res = service.import_workbook(file_path)
+
+        assert res.status == "SUCCESS"
+        assert res.rows_inserted == 2
+        cur = mock_db.mock_conn.cursors[-1]
+        params = cur.get_params_for_query("bookings")
+        assert len(params) == 1
+        assert params[0][0] is True  # received
+        assert params[0][2] == "CoordX"  # coordinator
+        assert params[0][13] == "Innova"  # vehicle_type
+

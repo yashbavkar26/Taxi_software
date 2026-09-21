@@ -73,6 +73,38 @@ class TestValidator:
         assert norm_row["sl_no"] == 1
         assert norm_row["driver_name"] == "Rahul"
         assert norm_row["received"] is False
+        assert norm_row["coordinator"] == "Staff"
+
+    def test_validate_and_normalize_row_with_coordinator_and_vehicle_type(self):
+        headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vehicle Type",
+        ]
+        val = WorksheetValidator()
+        h_res = val.validate_headers("Feb 01", headers)
+        assert h_res.is_valid
+        raw_row = [True, 5, "Manager", "Guest B", "9876543210", "2026-02-01", "A", "B", "10:00", "12:00", "Duty", "Rahul", "8007029326", "Sedan"]
+
+        norm_row, errors = WorksheetValidator.validate_and_normalize_row(
+            "Feb 01", 2, raw_row, h_res, BOOKINGS_SCHEMA
+        )
+        assert len(errors) == 0
+        assert norm_row is not None
+        assert norm_row["coordinator"] == "Manager"
+        assert norm_row["vehicle_type"] == "Sedan"
+        assert norm_row["received"] is True
 
     def test_validate_and_normalize_row_received_truthy(self, sample_booking_headers):
         val = WorksheetValidator()
