@@ -1,6 +1,7 @@
 """Data normalization and sanitization utilities for Excel cell values."""
 
 import datetime
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Optional
@@ -30,15 +31,11 @@ def normalize_integer(val: Any) -> Optional[int]:
     """Normalize numeric cell to integer, preserving 0 and avoiding None for 0."""
     if val is None:
         return None
-    if isinstance(val, (int, bool)):
-        if isinstance(val, bool):
-            return 1 if val else 0
+    if isinstance(val, bool):
+        return 1 if val else 0
+    if isinstance(val, int):
         return val
-    if isinstance(val, float):
-        if val.is_integer():
-            return int(val)
-        return int(val)
-    if isinstance(val, Decimal):
+    if isinstance(val, (float, Decimal)):
         return int(val)
     s = str(val).strip()
     if not s:
@@ -52,19 +49,19 @@ def normalize_integer(val: Any) -> Optional[int]:
 
 def normalize_phone(val: Any) -> Optional[str]:
     """Normalize phone/mobile numbers cleanly without trailing .0 from Excel floats."""
-    if val is None:
+    if val is None or isinstance(val, bool):
         return None
-    if isinstance(val, bool):
-        return None
-    if isinstance(val, float):
-        if val.is_integer():
-            val = int(val)
+    if isinstance(val, float) and val.is_integer():
+        val = int(val)
+    elif isinstance(val, Decimal) and val % 1 == 0:
+        val = int(val)
     s = str(val).strip()
     if not s:
         return None
     if s.endswith(".0") and s[:-2].isdigit():
         s = s[:-2]
     return s
+
 
 
 def normalize_date(val: Any) -> Optional[datetime.date]:
@@ -87,6 +84,8 @@ def normalize_date(val: Any) -> Optional[datetime.date]:
         "%d.%m.%Y",
         "%b %d, %Y",
         "%d %b %Y",
+        "%d-%m%Y",
+        "%d/%m%Y",
     ]
     for fmt in formats:
         try:
@@ -116,8 +115,11 @@ def normalize_time(val: Any) -> Optional[datetime.time]:
         seconds = total_seconds % 60
         return datetime.time(hours, minutes, seconds)
     s = str(val).strip()
-    if not s:
+    if not s or s.lower() in ("-", "--", "---", "0", "00", "00:00:00", "na", "n/a", "nil", "none"):
         return None
+
+    # Handle redundant AM/PM appended to 24-hour time like '14:35 PM'
+    s = re.sub(r"^(1[3-9]|2[0-3]):([0-5][0-9])\s*[ap]m$", r"\1:\2", s, flags=re.IGNORECASE)
 
     formats = [
         "%H:%M:%S",
@@ -126,6 +128,8 @@ def normalize_time(val: Any) -> Optional[datetime.time]:
         "%I:%M:%S %p",
         "%I:%M%p",
         "%I:%M:%S%p",
+        "%I %p",
+        "%I%p",
     ]
     for fmt in formats:
         try:

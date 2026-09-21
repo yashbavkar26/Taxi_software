@@ -4,8 +4,8 @@ from app.common.normalizer import ColumnDef
 from app.common.schema_base import TableSchema
 
 BOOKINGS_COLUMNS = {
-    "received": ColumnDef(db_column="received", data_type="boolean", is_required=False),
     "sl_no": ColumnDef(db_column="sl_no", data_type="integer", is_required=False),
+    "received": ColumnDef(db_column="received", data_type="boolean", is_required=False),
     "coordinator": ColumnDef(db_column="coordinator", data_type="string", is_required=False, max_length=255),
     "guest_name": ColumnDef(db_column="guest_name", data_type="string", is_required=False, max_length=255),
     "guest_mobile_no": ColumnDef(db_column="guest_mobile_no", data_type="phone", is_required=False, max_length=20),
@@ -21,14 +21,15 @@ BOOKINGS_COLUMNS = {
 }
 
 BOOKINGS_HEADER_ALIASES = {
-    "received": "received",
-    "recived": "received",
     "sl.no.": "sl_no",
     "sl. no.": "sl_no",
     "sl.no": "sl_no",
     "sl no": "sl_no",
     "sl_no": "sl_no",
     "serial no": "sl_no",
+    "2": "sl_no",
+    "received": "received",
+    "recived": "received",
     "name": "coordinator",
     "coordinator": "coordinator",
     "coordinator name": "coordinator",
@@ -62,8 +63,8 @@ BOOKINGS_HEADER_ALIASES = {
 }
 
 CANONICAL_BOOKING_HEADERS = [
-    "Received",
     "Sl.No.",
+    "Received",
     "Coordinator",
     "Guest",
     "Guest Mobile No.",
@@ -84,5 +85,13 @@ BOOKINGS_SCHEMA = TableSchema(
     columns=BOOKINGS_COLUMNS,
     header_aliases=BOOKINGS_HEADER_ALIASES,
     required_headers={"guest_name", "travel_date", "driver_name"},
-    generated_columns={"driver_message", "guest_message", "driver message", "guest message"},
+    generated_columns={
+        "driver_message",
+        "guest_message",
+        "driver message",
+        "guest message",
+        "guest link",
+        "driver link",
+        "message",
+    },
 )

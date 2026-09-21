@@ -59,6 +59,8 @@ class TestNormalizer:
         assert normalize_date("2026-02-01") == d
         assert normalize_date("01-02-2026") == d
         assert normalize_date("01/02/2026") == d
+        assert normalize_date("29-122025") == datetime.date(2025, 12, 29)
+        assert normalize_date("29/122025") == datetime.date(2025, 12, 29)
         assert normalize_date(None) is None
         assert normalize_date("  ") is None
 
@@ -75,7 +77,15 @@ class TestNormalizer:
         assert normalize_time("12:00:00") == t
         assert normalize_time("12:00 PM") == t
         assert normalize_time("12:00 AM") == datetime.time(0, 0)
+        assert normalize_time("14:35 PM") == datetime.time(14, 35)
+        assert normalize_time("9 PM") == datetime.time(21, 0)
         assert normalize_time(None) is None
+        assert normalize_time("-") is None
+        assert normalize_time("--") is None
+        assert normalize_time("00") is None
+        assert normalize_time("0") is None
+        assert normalize_time("nil") is None
+        assert normalize_time("n/a") is None
 
     def test_normalize_time_invalid(self):
         with pytest.raises(ValueError, match="not a valid time"):

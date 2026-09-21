@@ -1,4 +1,4 @@
-CREATE DATABASE IF NOT EXISTS taxi_database;
+bookingsCREATE DATABASE IF NOT EXISTS taxi_database;
 USE taxi_database;
 
 CREATE TABLE IF NOT EXISTS drivers (
@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS drivers (
 
 CREATE TABLE IF NOT EXISTS bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    received BOOLEAN DEFAULT FALSE,
     sl_no INT,
+    received BOOLEAN DEFAULT FALSE,
     coordinator VARCHAR(255),
     guest_name VARCHAR(255),
     guest_mobile_no VARCHAR(20),
@@ -28,14 +28,13 @@ CREATE TABLE IF NOT EXISTS bookings (
     ) STORED,
     guest_message TEXT GENERATED ALWAYS AS (
         CONCAT('From GIM', CHAR(10), 'Driver ', COALESCE(driver_name, ''), ' ', COALESCE(contact, ''), ' will come to pick you tomorrow at ', COALESCE(TIME_FORMAT(start_time, '%l:%i %p'), ''), ' at ', COALESCE(pickup_location, ''))
-    ) STORED,
-    FOREIGN KEY (driver_name) REFERENCES drivers(driver)
+    ) STORED
 );
 
 CREATE TABLE IF NOT EXISTS masterfile (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sl_no INT,
-    vendor VARCHAR(255),actoractor_id
+    vendor VARCHAR(255),
     travel_date DATE,
     vehicle_no VARCHAR(50),
     vehicle_type VARCHAR(100),
@@ -117,7 +116,3 @@ BEGIN
 END //
 
 DELIMITER ;
-
-
-USE taxi_database
-

@@ -222,8 +222,8 @@ class TestExcelImportService:
         booking_params = cur.get_params_for_query("bookings")
         assert len(booking_params) == 1
         inserted_params = booking_params[0]
-        assert inserted_params[0] is False
-        assert inserted_params[1] == 0
+        assert inserted_params[0] == 0
+        assert inserted_params[1] is False
         assert inserted_params[2] == "A"
 
     # 9. Invalid numeric value reports exact sheet and row
@@ -397,7 +397,64 @@ class TestExcelImportService:
         cur = mock_db.mock_conn.cursors[-1]
         params = cur.get_params_for_query("bookings")
         assert len(params) == 1
-        assert params[0][0] is True  # received
+        assert params[0][0] == 1  # sl_no
+        assert params[0][1] is True  # received
         assert params[0][2] == "CoordX"  # coordinator
         assert params[0][13] == "Innova"  # vehicle_type
+
+    # 17. Reverse booking sheets order
+    def test_reverse_booking_sheets_order(self, make_workbook, sample_booking_headers):
+        file_path = make_workbook(
+            {
+                "Feb 01": [
+                    sample_booking_headers,
+                    [False, 1, "A", "G1", "111", "2026-02-01", "LocA", "LocB", "10:00", "11:00", "R1", "Abhishek", "8830087698"],
+                ],
+                "Feb 02": [
+                    sample_booking_headers,
+                    [False, 2, "B", "G2", "222", "2026-02-02", "LocC", "LocD", "11:00", "12:00", "R2", "Rahul", "8007029326"],
+                ],
+                "Feb 03": [
+                    sample_booking_headers,
+                    [False, 3, "C", "G3", "333", "2026-02-03", "LocE", "LocF", "12:00", "13:00", "R3", "Arvind", "9822150660"],
+                ],
+            }
+        )
+        service, _ = self._create_service()
+
+        # Default: reversed order (Feb 03, Feb 02, Feb 01)
+        res_reversed = service.import_workbook(file_path, reverse_sheets=True)
+        assert [s.sheet_name for s in res_reversed.sheets_processed] == ["Feb 03", "Feb 02", "Feb 01"]
+
+        # Forward order (Feb 01, Feb 02, Feb 03)
+        res_forward = service.import_workbook(file_path, reverse_sheets=False)
+        assert [s.sheet_name for s in res_forward.sheets_processed] == ["Feb 01", "Feb 02", "Feb 03"]
+
+    # 18. Drivers added ONLY from Contacts sheet and NOT from Booking sheets
+    def test_drivers_only_from_contacts_not_from_bookings(self, make_workbook, sample_booking_headers, sample_contacts_headers):
+        file_path = make_workbook(
+            {
+                "Contacts": [
+                    sample_contacts_headers,
+                    [1, "AliceDriver", "9991112223"],
+                ],
+                "Feb 01": [
+                    sample_booking_headers,
+                    [False, 1, "Coord", "Guest", "555", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "BobUnknownDriver", "999"],
+                ],
+            }
+        )
+        service, mock_db = self._create_service()
+        res = service.import_workbook(file_path)
+
+        assert res.status == "SUCCESS"
+        assert res.rows_inserted == 2  # 1 driver + 1 booking
+
+        cur = mock_db.mock_conn.cursors[-1]
+        driver_params = cur.get_params_for_query("drivers")
+        # Ensure ONLY AliceDriver was passed to drivers table query
+        inserted_driver_names = [p[0] for p in driver_params]
+        assert "AliceDriver" in inserted_driver_names
+        assert "BobUnknownDriver" not in inserted_driver_names
+
 

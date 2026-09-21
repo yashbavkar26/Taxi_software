@@ -37,9 +37,14 @@ def main(argv=None) -> int:
         help="Duplicate handling strategy for unique constraints (default: skip).",
     )
     parser.add_argument(
+        "--no-reverse-sheets",
+        action="store_true",
+        help="Do not reverse booking sheets order (process sheets in workbook order).",
+    )
+    parser.add_argument(
         "--no-auto-register-drivers",
         action="store_true",
-        help="Do not auto-register unknown driver names referenced in bookings.",
+        help="Deprecated flag: drivers are now only added from the contacts sheet.",
     )
     parser.add_argument(
         "--log-level",
@@ -59,8 +64,8 @@ def main(argv=None) -> int:
         config.batch_size = args.batch_size
     if args.duplicate_mode:
         config.duplicate_mode = args.duplicate_mode
-    if args.no_auto_register_drivers:
-        config.auto_register_drivers = False
+    if args.no_reverse_sheets:
+        config.reverse_sheets = False
 
     file_path = Path(args.file_path)
     if not file_path.exists():
@@ -73,6 +78,7 @@ def main(argv=None) -> int:
         dry_run=args.dry_run,
         batch_size=config.batch_size,
         duplicate_mode=config.duplicate_mode,
+        reverse_sheets=config.reverse_sheets,
     )
 
     print()

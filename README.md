@@ -44,7 +44,7 @@ Taxi Software/
 │   └── cli/                   # Command-line entry points
 │       └── import_bookings.py # CLI: python -m app.cli.import_bookings
 │
-├── tests/                     # Unit and integration test suite (41 tests)
+├── tests/                     # Unit and integration test suite (48 tests)
 ├── requirements.txt
 ├── .env.example
 ├── taxi_schema.sql
@@ -60,20 +60,22 @@ Taxi Software/
    - **All Other Sheets** (`Feb 01`, `Feb 02`, etc.): Contain date-wise taxi bookings and are imported into **ONE single MySQL table**: **`bookings`**.
    - Worksheet names do **not** determine destination table names.
 
-2. **Foreign Key Safety & Pre-Validation**:
-   - In `taxi_schema.sql`, `bookings.driver_name` references `drivers(driver)`.
-   - The pipeline processes the `Contacts` sheet first to register drivers before inserting bookings.
-   - Referenced drivers missing from `Contacts` can be auto-registered with `NULL` contact to prevent FK violations (`AUTO_REGISTER_DRIVERS=true`).
+2. **Driver Directory Integrity**:
+   - The **`drivers`** table is populated **exclusively** from the `Contacts` worksheet.
+   - Driver names in `bookings` that are unlisted or dispatch notes (e.g., "Cancelled", joint drivers) are stored cleanly in `bookings` without polluting the `drivers` master directory.
 
-3. **Generated Stored Columns**:
+3. **Reversed Sheet Ingestion (Earliest Date First)**:
+   - Workbooks arranged from end-of-month to start-of-month (e.g., Dec 31 to Dec 01) are ingested in reverse order so MySQL IDs reflect chronological progression (`REVERSE_SHEETS=true` by default). Can be toggled via `--no-reverse-sheets`.
+
+4. **Generated Stored Columns**:
    - MySQL columns `driver_message` and `guest_message` are `STORED GENERATED ALWAYS AS (...)`.
    - The importer automatically detects and excludes trailing formula/message columns from the `INSERT` statement to avoid MySQL Error 3105.
 
-4. **Streaming & Bounded Memory**:
+5. **Streaming & Bounded Memory**:
    - Uses `openpyxl` with `read_only=True` and `data_only=True`.
    - Rows are streamed row-by-row with $O(1)$ memory usage.
 
-5. **ACID Transaction Safety**:
+6. **ACID Transaction Safety**:
    - Pre-validates schemas across all worksheets before starting any database operations.
    - If any sheet has missing columns, extra columns, or duplicate headers, the import aborts immediately.
    - Database writes run inside a single atomic transaction: commits on complete success; rolls back entirely on any error.
@@ -174,4 +176,4 @@ Run the complete test suite:
 pytest -v
 ```
 
-All 41 test cases pass in ~0.5s.
+All 48 test cases pass in ~0.5s.

@@ -22,8 +22,8 @@ class BookingRepository:
             return 0
 
         columns = [
-            "received",
             "sl_no",
+            "received",
             "coordinator",
             "guest_name",
             "guest_mobile_no",

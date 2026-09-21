@@ -30,6 +30,7 @@ class WorksheetValidator:
     def __init__(self):
         self.first_booking_headers: Optional[List[str]] = None
         self.first_booking_sheet_name: Optional[str] = None
+        self.first_booking_canonical: Optional[Set[str]] = None
 
     def validate_headers(
         self, sheet_name: str, raw_headers: Sequence[Any]
@@ -110,21 +111,37 @@ class WorksheetValidator:
 
         # Inter-sheet booking consistency validation
         if schema.table_name == "bookings":
+            canonical_current = {
+                schema.header_aliases.get(h.lower(), h.lower())
+                for h in trimmed_headers
+                if h and h.lower() not in schema.generated_columns
+            }
+
             if self.first_booking_headers is None:
                 self.first_booking_headers = trimmed_headers
+                self.first_booking_canonical = set(canonical_current)
                 self.first_booking_sheet_name = sheet_name
             else:
-                norm_current = [h.lower() for h in trimmed_headers if h]
-                norm_first = [h.lower() for h in self.first_booking_headers if h]
-                diff_missing = [h for h in norm_first if h not in norm_current]
-                diff_extra = [h for h in norm_current if h not in norm_first]
-                if diff_missing or diff_extra:
+                optional_cols = {"received", "vehicle_type"}
+                diff_missing = [
+                    c for c in (self.first_booking_canonical - canonical_current)
+                    if c not in optional_cols
+                ]
+                diff_extra = [
+                    c for c in (canonical_current - self.first_booking_canonical)
+                    if c not in schema.columns and c not in schema.generated_columns
+                ]
+
+                if diff_missing or diff_extra or unexpected_columns:
                     mismatch_parts = []
                     if diff_missing:
-                        mismatch_parts.append(f"missing {diff_missing} compared to sheet '{self.first_booking_sheet_name}'")
-                    if diff_extra:
-                        mismatch_parts.append(f"extra {diff_extra} compared to sheet '{self.first_booking_sheet_name}'")
+                        mismatch_parts.append(f"missing {sorted(diff_missing)} compared to sheet '{self.first_booking_sheet_name}'")
+                    if diff_extra or unexpected_columns:
+                        extras = sorted(set(diff_extra).union(unexpected_columns))
+                        mismatch_parts.append(f"extra {extras} compared to sheet '{self.first_booking_sheet_name}'")
                     error_parts.append(f"Schema mismatch against first booking sheet '{self.first_booking_sheet_name}': {'; '.join(mismatch_parts)}")
+
+                self.first_booking_canonical.update(canonical_current & set(schema.columns.keys()))
 
         is_valid = len(error_parts) == 0
         error_msg = f"Sheet '{sheet_name}': {'; '.join(error_parts)}" if error_parts else ""
@@ -144,7 +161,6 @@ class WorksheetValidator:
     def is_blank_row(
         raw_row: Sequence[Any],
         col_index_to_db_col: Dict[int, str],
-        is_contacts: bool = False,
     ) -> bool:
         """Determine if a row is completely blank or contains only default unedited flags."""
         if not raw_row or all(c is None for c in raw_row):

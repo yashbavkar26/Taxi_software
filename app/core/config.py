@@ -24,7 +24,8 @@ class Config:
     db_charset: str = "utf8mb4"
     batch_size: int = 1000
     duplicate_mode: str = "skip"  # 'fail', 'skip', 'upsert'
-    auto_register_drivers: bool = True
+    reverse_sheets: bool = True
+    auto_register_drivers: bool = False
     log_level: str = "INFO"
 
     @classmethod
@@ -39,7 +40,8 @@ class Config:
             db_charset=os.getenv("DB_CHARSET", "utf8mb4"),
             batch_size=int(os.getenv("BATCH_SIZE", "1000")),
             duplicate_mode=os.getenv("DUPLICATE_MODE", "skip").lower(),
-            auto_register_drivers=os.getenv("AUTO_REGISTER_DRIVERS", "true").lower() in ("true", "1", "yes"),
+            reverse_sheets=os.getenv("REVERSE_SHEETS", "true").lower() in ("true", "1", "yes"),
+            auto_register_drivers=os.getenv("AUTO_REGISTER_DRIVERS", "false").lower() in ("true", "1", "yes"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
 

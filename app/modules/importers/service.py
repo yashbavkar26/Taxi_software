@@ -45,12 +45,14 @@ class ExcelImportService:
         dry_run: bool = False,
         batch_size: Optional[int] = None,
         duplicate_mode: Optional[str] = None,
+        reverse_sheets: Optional[bool] = None,
         strict_validation: bool = True,
     ) -> ImportResult:
         """Import an Excel workbook into MySQL."""
         start_time = time.perf_counter()
         effective_batch_size = batch_size or self.config.batch_size
         effective_duplicate_mode = duplicate_mode or self.config.duplicate_mode
+        effective_reverse_sheets = self.config.reverse_sheets if reverse_sheets is None else reverse_sheets
 
         if effective_batch_size != self.driver_repo.batch_size or effective_duplicate_mode != self.driver_repo.duplicate_mode:
             self.driver_repo = DriverRepository(
@@ -95,6 +97,10 @@ class ExcelImportService:
                             logger.warning("Multiple contacts sheets found; using first: '%s'", contacts_sheet_name)
                     else:
                         booking_sheet_names.append(name)
+
+                # Process booking sheets in reverse order of the workbook (e.g. Day 1 -> Day 31)
+                if effective_reverse_sheets:
+                    booking_sheet_names.reverse()
 
                 validator = WorksheetValidator()
                 header_validations: Dict[str, HeaderValidationResult] = {}
@@ -199,7 +205,7 @@ class ExcelImportService:
             summary = SheetSummary(sheet_name=contacts_sheet, target_table="drivers")
             for row_num, raw_row in reader.stream_rows(contacts_sheet, min_row=2):
                 summary.rows_read += 1
-                if WorksheetValidator.is_blank_row(raw_row, c_val.col_index_to_db_col, is_contacts=True):
+                if WorksheetValidator.is_blank_row(raw_row, c_val.col_index_to_db_col):
                     summary.rows_skipped += 1
                     continue
                 norm_row, errors = WorksheetValidator.validate_and_normalize_row(
@@ -253,7 +259,9 @@ class ExcelImportService:
     ) -> ImportResult:
         """Perform transactional batch import into MySQL."""
         with self.db.transaction() as cursor:
-            # 1. Process and insert Contacts sheet into 'drivers' first
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+
+            # 1. Process and insert Contacts sheet into 'drivers' first (ONLY source for drivers)
             known_drivers: Set[str] = set()
             if contacts_sheet and contacts_sheet in header_validations:
                 c_val = header_validations[contacts_sheet]
@@ -262,7 +270,7 @@ class ExcelImportService:
 
                 for row_num, raw_row in reader.stream_rows(contacts_sheet, min_row=2):
                     summary.rows_read += 1
-                    if WorksheetValidator.is_blank_row(raw_row, c_val.col_index_to_db_col, is_contacts=True):
+                    if WorksheetValidator.is_blank_row(raw_row, c_val.col_index_to_db_col):
                         summary.rows_skipped += 1
                         continue
 
@@ -300,7 +308,6 @@ class ExcelImportService:
                 b_val = header_validations[b_sheet]
                 summary = SheetSummary(sheet_name=b_sheet, target_table="bookings")
                 booking_batch: List[Dict[str, Any]] = []
-                referenced_drivers: Set[str] = set()
 
                 for row_num, raw_row in reader.stream_rows(b_sheet, min_row=2):
                     summary.rows_read += 1
@@ -319,29 +326,22 @@ class ExcelImportService:
                     else:
                         summary.rows_validated += 1
                         if norm_row:
-                            driver_val = norm_row.get("driver_name")
-                            if driver_val:
-                                referenced_drivers.add(driver_val)
                             booking_batch.append(norm_row)
 
                     if len(booking_batch) >= self.booking_repo.batch_size:
-                        if self.config.auto_register_drivers and referenced_drivers:
-                            self.driver_repo.ensure_drivers_exist(cursor, referenced_drivers)
-                            referenced_drivers.clear()
                         inserted = self.booking_repo.insert_batch(cursor, booking_batch)
                         summary.rows_inserted += inserted
                         booking_batch.clear()
 
                 if booking_batch:
-                    if self.config.auto_register_drivers and referenced_drivers:
-                        self.driver_repo.ensure_drivers_exist(cursor, referenced_drivers)
-                        referenced_drivers.clear()
                     inserted = self.booking_repo.insert_batch(cursor, booking_batch)
                     summary.rows_inserted += inserted
                     booking_batch.clear()
 
                 result.sheets_processed.append(summary)
                 result.database_writes += summary.rows_inserted
+
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
 
         for s in result.sheets_processed:
             result.rows_read += s.rows_read
