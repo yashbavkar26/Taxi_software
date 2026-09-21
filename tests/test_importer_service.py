@@ -222,6 +222,7 @@ class TestExcelImportService:
         booking_params = cur.get_params_for_query("bookings")
         assert len(booking_params) == 1
         inserted_params = booking_params[0]
+        assert inserted_params[0] is False
         assert inserted_params[1] == 0
 
     # 9. Invalid numeric value reports exact sheet and row

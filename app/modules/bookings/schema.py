@@ -4,7 +4,7 @@ from app.common.normalizer import ColumnDef
 from app.common.schema_base import TableSchema
 
 BOOKINGS_COLUMNS = {
-    "received": ColumnDef(db_column="received", data_type="boolean", is_required=False, max_length=50),
+    "received": ColumnDef(db_column="received", data_type="boolean", is_required=False),
     "sl_no": ColumnDef(db_column="sl_no", data_type="integer", is_required=False),
     "name": ColumnDef(db_column="name", data_type="string", is_required=False, max_length=255),
     "guest_name": ColumnDef(db_column="guest_name", data_type="string", is_required=False, max_length=255),

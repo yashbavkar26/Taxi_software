@@ -72,6 +72,35 @@ class TestValidator:
         assert norm_row["guest_name"] == "Guest A"
         assert norm_row["sl_no"] == 1
         assert norm_row["driver_name"] == "Rahul"
+        assert norm_row["received"] is False
+
+    def test_validate_and_normalize_row_received_truthy(self, sample_booking_headers):
+        val = WorksheetValidator()
+        h_res = val.validate_headers("Feb 01", sample_booking_headers)
+        raw_row = ["received", 1, "Staff", "Guest A", "9876543210", "2026-02-01", "A", "B", "10:00", "12:00", "Duty", "Rahul", "8007029326"]
+
+        norm_row, errors = WorksheetValidator.validate_and_normalize_row(
+            "Feb 01", 2, raw_row, h_res, BOOKINGS_SCHEMA
+        )
+        assert len(errors) == 0
+        assert norm_row is not None
+        assert norm_row["received"] is True
+
+    def test_validate_and_normalize_row_invalid_boolean_reports_location(self, sample_booking_headers):
+        val = WorksheetValidator()
+        h_res = val.validate_headers("Feb 01", sample_booking_headers)
+        raw_row = ["MAYBE", 1, "Staff", "Guest A", "9876543210", "2026-02-01", "A", "B", "10:00", "12:00", "Duty", "Rahul", "8007029326"]
+
+        norm_row, errors = WorksheetValidator.validate_and_normalize_row(
+            "Feb 01", 15, raw_row, h_res, BOOKINGS_SCHEMA
+        )
+        assert norm_row is None
+        assert len(errors) == 1
+        err = errors[0]
+        assert err.sheet_name == "Feb 01"
+        assert err.row_number == 15
+        assert err.column_name == "received"
+        assert "not a valid boolean" in err.message
 
     def test_validate_and_normalize_row_invalid_data_reports_location(self, sample_booking_headers):
         val = WorksheetValidator()

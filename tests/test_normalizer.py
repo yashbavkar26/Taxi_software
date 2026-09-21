@@ -82,15 +82,25 @@ class TestNormalizer:
             normalize_time("99:99")
 
     def test_normalize_boolean(self):
-        assert normalize_boolean(True) == "True"
-        assert normalize_boolean(False) == "False"
-        assert normalize_boolean("true") == "True"
-        assert normalize_boolean("false") == "False"
-        assert normalize_boolean("yes") == "True"
-        assert normalize_boolean("no") == "False"
-        assert normalize_boolean("1") == "True"
-        assert normalize_boolean("0") == "False"
-        assert normalize_boolean(None) == "False"
+        assert normalize_boolean(True) is True
+        assert normalize_boolean(False) is False
+        assert normalize_boolean("true") is True
+        assert normalize_boolean("false") is False
+        assert normalize_boolean("yes") is True
+        assert normalize_boolean("no") is False
+        assert normalize_boolean("1") is True
+        assert normalize_boolean("0") is False
+        assert normalize_boolean(1) is True
+        assert normalize_boolean(0) is False
+        assert normalize_boolean(None) is False
+        assert normalize_boolean("") is False
+        assert normalize_boolean("received") is True
+
+    def test_normalize_boolean_invalid(self):
+        with pytest.raises(ValueError, match="not a valid boolean"):
+            normalize_boolean("invalid_value")
+        with pytest.raises(ValueError, match="not a valid boolean"):
+            normalize_boolean(99)
 
     def test_normalize_cell_dispatch(self):
         col_str = ColumnDef(db_column="test_str", data_type="string", max_length=5)
@@ -98,3 +108,8 @@ class TestNormalizer:
 
         col_int = ColumnDef(db_column="test_int", data_type="integer")
         assert normalize_cell("100", col_int) == 100
+
+        col_bool = ColumnDef(db_column="test_bool", data_type="boolean")
+        assert normalize_cell("yes", col_bool) is True
+        assert normalize_cell(False, col_bool) is False
+        assert normalize_cell(None, col_bool) is False

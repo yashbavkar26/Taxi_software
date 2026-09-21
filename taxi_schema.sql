@@ -9,9 +9,10 @@ CREATE TABLE IF NOT EXISTS drivers (
 
 CREATE TABLE IF NOT EXISTS bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    received VARCHAR(50),
+    received BOOLEAN DEFAULT FALSE,
     sl_no INT,
     name VARCHAR(255),
+    coordinator VARCHAR(255),
     guest_name VARCHAR(255),
     guest_mobile_no VARCHAR(20),
     travel_date DATE,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     reason TEXT,
     driver_name VARCHAR(255),
     contact VARCHAR(20),
+    vehicle_type VARCHAR(255),
     driver_message TEXT GENERATED ALWAYS AS (
         CONCAT('Tomorrow', CHAR(10), COALESCE(guest_name, ''), ' ', COALESCE(guest_mobile_no, ''), CHAR(10), COALESCE(pickup_location, ''), ' to ', COALESCE(drop_location, ''), CHAR(10), COALESCE(TIME_FORMAT(start_time, '%l:%i %p'), ''))
     ) STORED,

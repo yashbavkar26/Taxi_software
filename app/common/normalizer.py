@@ -140,20 +140,26 @@ def normalize_time(val: Any) -> Optional[datetime.time]:
         raise ValueError(f"'{val}' is not a valid time format") from e
 
 
-def normalize_boolean(val: Any) -> Optional[str]:
-    """Normalize boolean value into MySQL-compatible string representation ('True'/'False')."""
+def normalize_boolean(val: Any) -> bool:
+    """Normalize boolean value into Python bool (True/False)."""
     if val is None:
-        return "False"
+        return False
     if isinstance(val, bool):
-        return "True" if val else "False"
+        return val
+    if isinstance(val, (int, float)):
+        if val in (1, 1.0):
+            return True
+        if val in (0, 0.0):
+            return False
+        raise ValueError(f"'{val}' is not a valid boolean")
     s = str(val).strip().lower()
     if not s:
-        return "False"
+        return False
     if s in ("true", "1", "yes", "y", "received"):
-        return "True"
+        return True
     if s in ("false", "0", "no", "n"):
-        return "False"
-    return str(val).strip()
+        return False
+    raise ValueError(f"'{val}' is not a valid boolean")
 
 
 def normalize_cell(val: Any, col_def: ColumnDef) -> Any:
@@ -175,9 +181,6 @@ def normalize_cell(val: Any, col_def: ColumnDef) -> Any:
     if col_def.data_type == "time":
         return normalize_time(val)
     if col_def.data_type == "boolean":
-        res = normalize_boolean(val)
-        if res is not None and col_def.max_length and len(res) > col_def.max_length:
-            return res[: col_def.max_length]
-        return res
+        return normalize_boolean(val)
 
     return val
