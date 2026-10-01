@@ -44,7 +44,12 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--no-auto-register-drivers",
         action="store_true",
-        help="Deprecated flag: drivers are now only added from the contacts sheet.",
+        help="Disable automatic registration of new drivers found in booking sheets into drivers table.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Abort import immediately on any row validation error (default: skip invalid rows and log errors).",
     )
     parser.add_argument(
         "--log-level",
@@ -66,6 +71,10 @@ def main(argv=None) -> int:
         config.duplicate_mode = args.duplicate_mode
     if args.no_reverse_sheets:
         config.reverse_sheets = False
+    if args.no_auto_register_drivers:
+        config.auto_register_drivers = False
+    if args.strict:
+        config.strict_validation = True
 
     file_path = Path(args.file_path)
     if not file_path.exists():
@@ -79,6 +88,7 @@ def main(argv=None) -> int:
         batch_size=config.batch_size,
         duplicate_mode=config.duplicate_mode,
         reverse_sheets=config.reverse_sheets,
+        strict_validation=config.strict_validation,
     )
 
     print()

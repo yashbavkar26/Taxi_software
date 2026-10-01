@@ -68,6 +68,9 @@ class TestNormalizer:
         with pytest.raises(ValueError, match="not a valid date"):
             normalize_date("invalid-date-xyz")
 
+    def test_normalize_date_with_asterisk(self):
+        assert normalize_date("27*01-2026") == datetime.date(2026, 1, 27)
+
     def test_normalize_time(self):
         t = datetime.time(12, 0)
         dt = datetime.datetime(2026, 2, 1, 12, 0)
@@ -86,6 +89,18 @@ class TestNormalizer:
         assert normalize_time("0") is None
         assert normalize_time("nil") is None
         assert normalize_time("n/a") is None
+
+    def test_normalize_time_quirks_and_cancellations(self):
+        assert normalize_time("5 :30 am") == datetime.time(5, 30)
+        assert normalize_time("10: 00 AM") == datetime.time(10, 0)
+        assert normalize_time("02:oo PM") == datetime.time(14, 0)
+        assert normalize_time("22 hrs") == datetime.time(22, 0)
+        assert normalize_time("22hrs") == datetime.time(22, 0)
+        assert normalize_time("Cancelled") is None
+        assert normalize_time("Cab cancelled used for GIM") is None
+        assert normalize_time("Cancelled after coming in campus") is None
+        assert normalize_time("CASH") is None
+        assert normalize_time("Paid to driver") is None
 
     def test_normalize_time_invalid(self):
         with pytest.raises(ValueError, match="not a valid time"):
@@ -123,3 +138,41 @@ class TestNormalizer:
         assert normalize_cell("yes", col_bool) is True
         assert normalize_cell(False, col_bool) is False
         assert normalize_cell(None, col_bool) is False
+
+    def test_normalize_cell_default_value(self):
+        col_with_default = ColumnDef(
+            db_column="company", data_type="string", default_value="GIM"
+        )
+        assert normalize_cell(None, col_with_default) == "GIM"
+        assert normalize_cell("", col_with_default) == "GIM"
+        assert normalize_cell("   ", col_with_default) == "GIM"
+        assert normalize_cell("Acme Corp", col_with_default) == "Acme Corp"
+
+    def test_format_guest_message(self):
+        from app.modules.bookings.schema import format_guest_message
+
+        # Default company
+        msg_default = format_guest_message(
+            driver_name="Rahul",
+            contact="8007029326",
+            start_time_str="10:00 AM",
+            pickup_location="Airport",
+        )
+        assert msg_default == (
+            "From GIM\n"
+            "Driver Rahul 8007029326 will come to pick you tomorrow at 10:00 AM at Airport"
+        )
+
+        # Custom company
+        msg_custom = format_guest_message(
+            driver_name="Abhishek",
+            contact="8830087698",
+            start_time_str="2:30 PM",
+            pickup_location="Hotel Taj",
+            company="Tata Sons",
+        )
+        assert msg_custom == (
+            "From Tata Sons\n"
+            "Driver Abhishek 8830087698 will come to pick you tomorrow at 2:30 PM at Hotel Taj"
+        )
+

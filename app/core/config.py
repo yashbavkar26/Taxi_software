@@ -25,7 +25,8 @@ class Config:
     batch_size: int = 1000
     duplicate_mode: str = "skip"  # 'fail', 'skip', 'upsert'
     reverse_sheets: bool = True
-    auto_register_drivers: bool = False
+    auto_register_drivers: bool = True
+    strict_validation: bool = False
     log_level: str = "INFO"
 
     @classmethod
@@ -41,9 +42,11 @@ class Config:
             batch_size=int(os.getenv("BATCH_SIZE", "1000")),
             duplicate_mode=os.getenv("DUPLICATE_MODE", "skip").lower(),
             reverse_sheets=os.getenv("REVERSE_SHEETS", "true").lower() in ("true", "1", "yes"),
-            auto_register_drivers=os.getenv("AUTO_REGISTER_DRIVERS", "false").lower() in ("true", "1", "yes"),
+            auto_register_drivers=os.getenv("AUTO_REGISTER_DRIVERS", "true").lower() in ("true", "1", "yes"),
+            strict_validation=os.getenv("STRICT_VALIDATION", "false").lower() in ("true", "1", "yes"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
+
 
     def safe_connection_info(self) -> str:
         """Return safe string representing connection without exposing password."""

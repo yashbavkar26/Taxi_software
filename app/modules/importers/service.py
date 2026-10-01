@@ -329,17 +329,28 @@ class ExcelImportService:
                             booking_batch.append(norm_row)
 
                     if len(booking_batch) >= self.booking_repo.batch_size:
+                        if self.config.auto_register_drivers:
+                            driver_writes = self.driver_repo.insert_new_drivers_from_bookings(
+                                cursor, booking_batch, known_drivers=known_drivers
+                            )
+                            result.database_writes += driver_writes
                         inserted = self.booking_repo.insert_batch(cursor, booking_batch)
                         summary.rows_inserted += inserted
                         booking_batch.clear()
 
                 if booking_batch:
+                    if self.config.auto_register_drivers:
+                        driver_writes = self.driver_repo.insert_new_drivers_from_bookings(
+                            cursor, booking_batch, known_drivers=known_drivers
+                        )
+                        result.database_writes += driver_writes
                     inserted = self.booking_repo.insert_batch(cursor, booking_batch)
                     summary.rows_inserted += inserted
                     booking_batch.clear()
 
                 result.sheets_processed.append(summary)
                 result.database_writes += summary.rows_inserted
+
 
             cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
 

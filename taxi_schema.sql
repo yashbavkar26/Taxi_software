@@ -1,4 +1,4 @@
-bookingsCREATE DATABASE IF NOT EXISTS taxi_database;
+CREATE DATABASE IF NOT EXISTS taxi_database;
 USE taxi_database;
 
 CREATE TABLE IF NOT EXISTS drivers (
@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS drivers (
 
 CREATE TABLE IF NOT EXISTS bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    sl_no INT,
     received BOOLEAN DEFAULT FALSE,
+    sl_no INT,
     coordinator VARCHAR(255),
     guest_name VARCHAR(255),
     guest_mobile_no VARCHAR(20),
@@ -27,9 +27,33 @@ CREATE TABLE IF NOT EXISTS bookings (
         CONCAT('Tomorrow', CHAR(10), COALESCE(guest_name, ''), ' ', COALESCE(guest_mobile_no, ''), CHAR(10), COALESCE(pickup_location, ''), ' to ', COALESCE(drop_location, ''), CHAR(10), COALESCE(TIME_FORMAT(start_time, '%l:%i %p'), ''))
     ) STORED,
     guest_message TEXT GENERATED ALWAYS AS (
-        CONCAT('From GIM', CHAR(10), 'Driver ', COALESCE(driver_name, ''), ' ', COALESCE(contact, ''), ' will come to pick you tomorrow at ', COALESCE(TIME_FORMAT(start_time, '%l:%i %p'), ''), ' at ', COALESCE(pickup_location, ''))
-    ) STORED
+        CONCAT('From ', COALESCE(company, 'GIM'), CHAR(10), 'Driver ', COALESCE(driver_name, ''), ' ', COALESCE(contact, ''), ' will come to pick you tomorrow at ', COALESCE(TIME_FORMAT(start_time, '%l:%i %p'), ''), ' at ', COALESCE(pickup_location, ''))
+    ) STORED,
+    company VARCHAR(255) DEFAULT 'GIM'
 );
+
+
+-- --------------------------------------------------------
+-- Trigger: Automatically insert new drivers from bookings
+-- First check if driver already exists in table; if not, only insert driver from bookings
+-- --------------------------------------------------------
+DROP TRIGGER IF EXISTS trg_bookings_insert_driver;
+
+DELIMITER //
+
+CREATE TRIGGER trg_bookings_insert_driver
+AFTER INSERT ON bookings
+FOR EACH ROW
+BEGIN
+    IF NEW.driver_name IS NOT NULL AND TRIM(NEW.driver_name) != '' THEN
+        IF NOT EXISTS (SELECT 1 FROM drivers WHERE driver = TRIM(NEW.driver_name)) THEN
+            INSERT INTO drivers (driver, contact) VALUES (TRIM(NEW.driver_name), NEW.contact);
+        END IF;
+    END IF;
+END //
+
+DELIMITER ;
+
 
 CREATE TABLE IF NOT EXISTS masterfile (
     id INT AUTO_INCREMENT PRIMARY KEY,

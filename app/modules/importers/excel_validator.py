@@ -54,6 +54,12 @@ class WorksheetValidator:
                 error_message=f"Sheet '{sheet_name}' has an empty header row.",
             )
 
+        # Determine target schema
+        if is_contacts_sheet(sheet_name):
+            schema = DRIVERS_SCHEMA
+        else:
+            schema = BOOKINGS_SCHEMA
+
         # Check for duplicate headers
         seen_headers: Set[str] = set()
         duplicates: List[str] = []
@@ -61,6 +67,11 @@ class WorksheetValidator:
             if not h:
                 continue
             h_lower = h.lower()
+            # In booking sheets, trailing message/formula columns (idx >= 13) are not duplicate base columns
+            if schema.table_name == "bookings" and idx >= 13 and (
+                h_lower in schema.generated_columns or h_lower in ("driver", "guest", "received", "contact")
+            ):
+                continue
             if h_lower in seen_headers and h_lower not in duplicates:
                 duplicates.append(h)
             seen_headers.add(h_lower)
@@ -74,12 +85,6 @@ class WorksheetValidator:
                 error_message=f"Sheet '{sheet_name}' contains duplicate header(s): {', '.join(duplicates)}",
             )
 
-        # Determine target schema
-        if is_contacts_sheet(sheet_name):
-            schema = DRIVERS_SCHEMA
-        else:
-            schema = BOOKINGS_SCHEMA
-
         col_index_to_db_col: Dict[int, str] = {}
         recognized_db_cols: Set[str] = set()
         unexpected_columns: List[str] = []
@@ -88,11 +93,15 @@ class WorksheetValidator:
             if not h:
                 continue
             h_lower = h.lower()
+            if idx >= 13 and schema.table_name == "bookings" and h_lower in ("driver", "guest", "received"):
+                # Trailing generated driver/guest text formulas or empty trailing headers
+                continue
             if h_lower in schema.header_aliases:
                 db_col = schema.header_aliases[h_lower]
                 if db_col in schema.columns:
-                    col_index_to_db_col[idx] = db_col
-                    recognized_db_cols.add(db_col)
+                    if db_col not in recognized_db_cols or db_col == "vehicle_type":
+                        col_index_to_db_col[idx] = db_col
+                        recognized_db_cols.add(db_col)
             elif h_lower in schema.generated_columns:
                 continue
             else:
@@ -113,8 +122,10 @@ class WorksheetValidator:
         if schema.table_name == "bookings":
             canonical_current = {
                 schema.header_aliases.get(h.lower(), h.lower())
-                for h in trimmed_headers
-                if h and h.lower() not in schema.generated_columns
+                for idx, h in enumerate(trimmed_headers)
+                if h
+                and h.lower() not in schema.generated_columns
+                and not (idx >= 13 and h.lower() in ("driver", "guest", "received"))
             }
 
             if self.first_booking_headers is None:
@@ -122,7 +133,15 @@ class WorksheetValidator:
                 self.first_booking_canonical = set(canonical_current)
                 self.first_booking_sheet_name = sheet_name
             else:
-                optional_cols = {"received", "vehicle_type"}
+                optional_cols = {
+                    "received",
+                    "sl_no",
+                    "coordinator",
+                    "guest_name",
+                    "reason",
+                    "vehicle_type",
+                    "company",
+                }
                 diff_missing = [
                     c for c in (self.first_booking_canonical - canonical_current)
                     if c not in optional_cols
@@ -224,7 +243,17 @@ class WorksheetValidator:
                 )
                 continue
 
-            normalized_row[db_col] = norm_val
+            if db_col in normalized_row and normalized_row[db_col] is not None:
+                if db_col == "vehicle_type" and norm_val is not None and str(norm_val).strip() != "":
+                    existing_val = str(normalized_row[db_col]).strip()
+                    new_val = str(norm_val).strip()
+                    if existing_val != new_val:
+                        combined = f"{existing_val} {new_val}"
+                        if col_def.max_length and len(combined) > col_def.max_length:
+                            combined = combined[: col_def.max_length]
+                        normalized_row[db_col] = combined
+            else:
+                normalized_row[db_col] = norm_val
 
         if errors:
             return None, errors

@@ -149,3 +149,145 @@ class TestValidator:
         assert err.row_number == 42
         assert err.column_name == "sl_no"
         assert "not a valid integer" in err.message
+
+    def test_validate_headers_with_company(self, sample_booking_headers):
+        headers_with_company = ["Company"] + sample_booking_headers
+        val = WorksheetValidator()
+        res = val.validate_headers("Feb 01", headers_with_company)
+        assert res.is_valid
+        assert "company" in res.col_index_to_db_col.values()
+
+    def test_company_is_optional_across_sheets(self, sample_booking_headers):
+        val = WorksheetValidator()
+        # Sheet 1 has Company
+        headers1 = ["Company"] + sample_booking_headers
+        res1 = val.validate_headers("Feb 01", headers1)
+        assert res1.is_valid
+
+        # Sheet 2 lacks Company (should still pass because company is in optional_cols)
+        res2 = val.validate_headers("Feb 02", sample_booking_headers)
+        assert res2.is_valid
+
+    def test_jan_2026_canonical_headers(self):
+        from app.modules.bookings.schema import CANONICAL_BOOKING_HEADERS
+        assert CANONICAL_BOOKING_HEADERS[0] == "Received"
+        assert CANONICAL_BOOKING_HEADERS[1] == "Sl.No."
+        assert CANONICAL_BOOKING_HEADERS[-1] == "Company"
+
+    def test_jan_2026_vech_no_and_vendor_aliases(self):
+        val = WorksheetValidator()
+        jan_headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vech No",
+            "Vendor",
+        ]
+        res = val.validate_headers("Jan 01", jan_headers)
+        assert res.is_valid
+        # "Vech No" maps to "vehicle_type"
+        assert res.col_index_to_db_col[13] == "vehicle_type"
+        # "Vendor" maps to "company"
+        assert res.col_index_to_db_col[14] == "company"
+
+    def test_validate_and_normalize_row_with_vech_no_and_vendor(self):
+        val = WorksheetValidator()
+        jan_headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vech No",
+            "Vendor",
+        ]
+        h_res = val.validate_headers("Jan 01", jan_headers)
+        raw_row = [
+            True,
+            1,
+            "Manager",
+            "Guest C",
+            "9876543210",
+            "2026-01-01",
+            "Airport",
+            "GIM",
+            "10:00",
+            "12:00",
+            "Meeting",
+            "Sadiq",
+            "8296274034",
+            "GA 07 T 1586",
+            "Lalu",
+        ]
+        norm_row, errors = WorksheetValidator.validate_and_normalize_row(
+            "Jan 01", 2, raw_row, h_res, BOOKINGS_SCHEMA
+        )
+        assert len(errors) == 0
+        assert norm_row is not None
+        assert norm_row["vehicle_type"] == "GA 07 T 1586"
+        assert norm_row["company"] == "Lalu"
+        assert norm_row["received"] is True
+
+    def test_validate_and_normalize_row_combines_vech_no_and_type(self):
+        val = WorksheetValidator()
+        headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vehicle Number",
+            "Type",
+        ]
+        h_res = val.validate_headers("Jan 01", headers)
+        assert h_res.is_valid
+        raw_row = [
+            True,
+            1,
+            "Manager",
+            "Guest C",
+            "9876543210",
+            "2026-01-01",
+            "Airport",
+            "GIM",
+            "10:00",
+            "12:00",
+            "Meeting",
+            "Sadiq",
+            "8296274034",
+            "GA 07 T 1586",
+            "Ertiga",
+        ]
+        norm_row, errors = WorksheetValidator.validate_and_normalize_row(
+            "Jan 01", 2, raw_row, h_res, BOOKINGS_SCHEMA
+        )
+        assert len(errors) == 0
+        assert norm_row is not None
+        assert norm_row["vehicle_type"] == "GA 07 T 1586 Ertiga"
+
