@@ -60,16 +60,19 @@ Taxi Software/
    - **All Other Sheets** (`Feb 01`, `Feb 02`, etc.): Contain date-wise taxi bookings and are imported into **ONE single MySQL table**: **`bookings`**.
    - Worksheet names do **not** determine destination table names.
 
-2. **Driver Directory Integrity**:
-   - The **`drivers`** table is populated **exclusively** from the `Contacts` worksheet.
-   - Driver names in `bookings` that are unlisted or dispatch notes (e.g., "Cancelled", joint drivers) are stored cleanly in `bookings` without polluting the `drivers` master directory.
+2. **Automatic Driver Registration**:
+   - Drivers from the `Contacts` worksheet are imported first.
+   - When new drivers are encountered in `bookings`, the system checks if the driver already exists in the `drivers` table; if not, the driver is automatically inserted with their contact number. This can be toggled via `--no-auto-register-drivers` or `AUTO_REGISTER_DRIVERS=false`.
 
 3. **Reversed Sheet Ingestion (Earliest Date First)**:
    - Workbooks arranged from end-of-month to start-of-month (e.g., Dec 31 to Dec 01) are ingested in reverse order so MySQL IDs reflect chronological progression (`REVERSE_SHEETS=true` by default). Can be toggled via `--no-reverse-sheets`.
 
-4. **Generated Stored Columns**:
+4. **Company Support & Generated Stored Columns**:
+   - MySQL column `company` defaults to `'GIM'` (customizable per booking row or Excel sheet).
    - MySQL columns `driver_message` and `guest_message` are `STORED GENERATED ALWAYS AS (...)`.
+   - `guest_message` dynamically outputs `From [Company Name]\nDriver [Name] [Contact] will come to pick you tomorrow at [Time] at [Location]`.
    - The importer automatically detects and excludes trailing formula/message columns from the `INSERT` statement to avoid MySQL Error 3105.
+
 
 5. **Streaming & Bounded Memory**:
    - Uses `openpyxl` with `read_only=True` and `data_only=True`.

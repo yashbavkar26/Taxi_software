@@ -17,6 +17,8 @@ class ColumnDef:
     is_required: bool = False
     is_unique: bool = False
     max_length: Optional[int] = None
+    default_value: Any = None
+
 
 
 def normalize_string(val: Any) -> Optional[str]:
@@ -56,7 +58,7 @@ def normalize_phone(val: Any) -> Optional[str]:
     elif isinstance(val, Decimal) and val % 1 == 0:
         val = int(val)
     s = str(val).strip()
-    if not s:
+    if not s or not any(c.isdigit() for c in s) or "cancel" in s.lower():
         return None
     if s.endswith(".0") and s[:-2].isdigit():
         s = s[:-2]
@@ -75,6 +77,9 @@ def normalize_date(val: Any) -> Optional[datetime.date]:
     s = str(val).strip()
     if not s:
         return None
+
+    # Replace asterisks or typos in date separators like '27*01-2026'
+    s = s.replace("*", "-")
 
     formats = [
         "%Y-%m-%d",
@@ -117,6 +122,23 @@ def normalize_time(val: Any) -> Optional[datetime.time]:
     s = str(val).strip()
     if not s or s.lower() in ("-", "--", "---", "0", "00", "00:00:00", "na", "n/a", "nil", "none"):
         return None
+
+    # Handle cancellation remarks or non-time status notes in time cells
+    if "cancel" in s.lower() or s.lower() in ("cash", "paid to driver"):
+        return None
+
+    # Replace typo 'o'/'O' in minutes of time strings like '02:oo PM'
+    s = re.sub(r":([oO0-9]{2})", lambda m: ":" + m.group(1).replace("o", "0").replace("O", "0"), s)
+
+    # Normalize spaces around colons like '5 :30 am' or '10: 00 AM'
+    s = re.sub(r"\s*:\s*", ":", s)
+
+    # Handle formats like '22 hrs' or '22hrs'
+    hrs_match = re.match(r"^(\d{1,2})\s*hrs?$", s, re.IGNORECASE)
+    if hrs_match:
+        h = int(hrs_match.group(1))
+        if 0 <= h <= 23:
+            return datetime.time(h, 0)
 
     # Handle redundant AM/PM appended to 24-hour time like '14:35 PM'
     s = re.sub(r"^(1[3-9]|2[0-3]):([0-5][0-9])\s*[ap]m$", r"\1:\2", s, flags=re.IGNORECASE)
@@ -168,23 +190,27 @@ def normalize_boolean(val: Any) -> bool:
 
 def normalize_cell(val: Any, col_def: ColumnDef) -> Any:
     """Route value normalization according to target column definition."""
+    res = None
     if col_def.data_type == "string":
         res = normalize_string(val)
         if res is not None and col_def.max_length and len(res) > col_def.max_length:
-            return res[: col_def.max_length]
-        return res
-    if col_def.data_type == "integer":
-        return normalize_integer(val)
-    if col_def.data_type == "phone":
+            res = res[: col_def.max_length]
+    elif col_def.data_type == "integer":
+        res = normalize_integer(val)
+    elif col_def.data_type == "phone":
         res = normalize_phone(val)
         if res is not None and col_def.max_length and len(res) > col_def.max_length:
-            return res[: col_def.max_length]
-        return res
-    if col_def.data_type == "date":
-        return normalize_date(val)
-    if col_def.data_type == "time":
-        return normalize_time(val)
-    if col_def.data_type == "boolean":
-        return normalize_boolean(val)
+            res = res[: col_def.max_length]
+    elif col_def.data_type == "date":
+        res = normalize_date(val)
+    elif col_def.data_type == "time":
+        res = normalize_time(val)
+    elif col_def.data_type == "boolean":
+        res = normalize_boolean(val)
+    else:
+        res = val
 
-    return val
+    if res is None and col_def.default_value is not None:
+        return col_def.default_value
+    return res
+

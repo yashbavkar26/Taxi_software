@@ -22,8 +22,8 @@ class BookingRepository:
             return 0
 
         columns = [
-            "sl_no",
             "received",
+            "sl_no",
             "coordinator",
             "guest_name",
             "guest_mobile_no",
@@ -36,6 +36,7 @@ class BookingRepository:
             "driver_name",
             "contact",
             "vehicle_type",
+            "company",
         ]
 
         cols_str = ", ".join(f"`{c}`" for c in columns)
@@ -46,12 +47,30 @@ class BookingRepository:
         else:
             sql = f"INSERT INTO `bookings` ({cols_str}) VALUES ({placeholders})"
 
+        def _get_val(record: Dict[str, Any], col: str) -> Any:
+            if col == "company":
+                v = record.get("company")
+                if v is None:
+                    v = record.get("Company")
+                if v is None:
+                    v = record.get("vendor")
+                if v is None:
+                    v = record.get("Vendor")
+                return v if (v is not None and str(v).strip() != "") else "GIM"
+            if col == "received":
+                v = record.get("received")
+                if v is None:
+                    v = record.get("Received")
+                return bool(v) if v is not None else False
+            return record.get(col)
+
         total_inserted = 0
         for i in range(0, len(booking_records), self.batch_size):
             chunk = booking_records[i : i + self.batch_size]
-            params = [[record.get(c) for c in columns] for record in chunk]
+            params = [[_get_val(record, c) for c in columns] for record in chunk]
             cursor.executemany(sql, params)
             total_inserted += len(chunk)
+
 
         logger.debug("Inserted %d records into 'bookings'", total_inserted)
         return total_inserted

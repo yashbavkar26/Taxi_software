@@ -222,9 +222,11 @@ class TestExcelImportService:
         booking_params = cur.get_params_for_query("bookings")
         assert len(booking_params) == 1
         inserted_params = booking_params[0]
-        assert inserted_params[0] == 0
-        assert inserted_params[1] is False
-        assert inserted_params[2] == "A"
+        assert inserted_params[0] is False  # received
+        assert inserted_params[1] == 0      # sl_no
+        assert inserted_params[2] == "A"    # coordinator
+        assert inserted_params[14] == "GIM" # company at end
+
 
     # 9. Invalid numeric value reports exact sheet and row
     def test_invalid_numeric_reports_sheet_and_row(self, make_workbook, sample_booking_headers):
@@ -397,10 +399,11 @@ class TestExcelImportService:
         cur = mock_db.mock_conn.cursors[-1]
         params = cur.get_params_for_query("bookings")
         assert len(params) == 1
-        assert params[0][0] == 1  # sl_no
-        assert params[0][1] is True  # received
+        assert params[0][0] is True  # received
+        assert params[0][1] == 1  # sl_no
         assert params[0][2] == "CoordX"  # coordinator
         assert params[0][13] == "Innova"  # vehicle_type
+        assert params[0][14] == "GIM"  # company at end
 
     # 17. Reverse booking sheets order
     def test_reverse_booking_sheets_order(self, make_workbook, sample_booking_headers):
@@ -430,8 +433,8 @@ class TestExcelImportService:
         res_forward = service.import_workbook(file_path, reverse_sheets=False)
         assert [s.sheet_name for s in res_forward.sheets_processed] == ["Feb 01", "Feb 02", "Feb 03"]
 
-    # 18. Drivers added ONLY from Contacts sheet and NOT from Booking sheets
-    def test_drivers_only_from_contacts_not_from_bookings(self, make_workbook, sample_booking_headers, sample_contacts_headers):
+    # 18. New drivers added in bookings are automatically inserted into drivers table
+    def test_new_drivers_from_bookings_auto_inserted(self, make_workbook, sample_booking_headers, sample_contacts_headers):
         file_path = make_workbook(
             {
                 "Contacts": [
@@ -440,7 +443,9 @@ class TestExcelImportService:
                 ],
                 "Feb 01": [
                     sample_booking_headers,
-                    [False, 1, "Coord", "Guest", "555", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "BobUnknownDriver", "999"],
+                    [False, 1, "Coord", "Guest1", "555", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "BobUnknownDriver", "999"],
+                    [False, 2, "Coord", "Guest2", "556", "2026-02-01", "A", "B", "11:00", "12:00", "Trip", "AliceDriver", "9991112223"],
+                    [False, 3, "Coord", "Guest3", "557", "2026-02-01", "A", "B", "12:00", "13:00", "Trip", "BobUnknownDriver", "999"],
                 ],
             }
         )
@@ -448,13 +453,153 @@ class TestExcelImportService:
         res = service.import_workbook(file_path)
 
         assert res.status == "SUCCESS"
-        assert res.rows_inserted == 2  # 1 driver + 1 booking
+        assert res.rows_inserted == 4  # 1 driver from Contacts + 3 bookings
 
         cur = mock_db.mock_conn.cursors[-1]
-        driver_params = cur.get_params_for_query("drivers")
-        # Ensure ONLY AliceDriver was passed to drivers table query
-        inserted_driver_names = [p[0] for p in driver_params]
+        insert_driver_params = cur.get_params_for_query("INSERT INTO `drivers`")
+        inserted_driver_names = [p[0] for p in insert_driver_params]
+
+        # AliceDriver inserted from contacts
         assert "AliceDriver" in inserted_driver_names
-        assert "BobUnknownDriver" not in inserted_driver_names
+        # BobUnknownDriver was new in bookings, so automatically inserted with contact
+        assert "BobUnknownDriver" in inserted_driver_names
+        bob_param = next(p for p in insert_driver_params if p[0] == "BobUnknownDriver")
+        assert bob_param[1] == "999"
+
+        # AliceDriver should NOT be inserted again (already exists)
+        assert inserted_driver_names.count("AliceDriver") == 1
+        # BobUnknownDriver appeared twice in bookings, but only inserted once
+        assert inserted_driver_names.count("BobUnknownDriver") == 1
+
+    # 19. Custom Company header and value in bookings
+    def test_import_with_custom_company_column(self, make_workbook):
+        booking_headers = [
+            "Received",
+            "Sl.No.",
+            "Company",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vehicle Type",
+        ]
+        file_path = make_workbook(
+            {
+                "Feb 01": [
+                    booking_headers,
+                    [True, 1, "Acme Corp", "CoordX", "Guest1", "999", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "DriverX", "888", "Sedan"],
+                    [False, 2, "", "CoordY", "Guest2", "888", "2026-02-01", "C", "D", "12:00", "13:00", "Meeting", "DriverY", "777", "SUV"],
+                ],
+            }
+        )
+        service, mock_db = self._create_service()
+        res = service.import_workbook(file_path)
+
+        assert res.status == "SUCCESS"
+        assert res.rows_inserted == 2
+        cur = mock_db.mock_conn.cursors[-1]
+        params = cur.get_params_for_query("bookings")
+        assert len(params) == 2
+        # First row has custom Company "Acme Corp" (at the end of schema)
+        assert params[0][14] == "Acme Corp"
+        # Second row had empty Company cell, defaulted to "GIM"
+        assert params[1][14] == "GIM"
+
+    # 20. When auto_register_drivers is False, new drivers from bookings are not auto-inserted
+    def test_auto_register_drivers_disabled(self, make_workbook, sample_booking_headers):
+        file_path = make_workbook(
+            {
+                "Feb 01": [
+                    sample_booking_headers,
+                    [False, 1, "Coord", "Guest", "555", "2026-02-01", "A", "B", "10:00", "11:00", "Trip", "UnregisteredDriver", "999"],
+                ],
+            }
+        )
+        service, mock_db = self._create_service()
+        service.config.auto_register_drivers = False
+        res = service.import_workbook(file_path)
+
+        assert res.status == "SUCCESS"
+        assert res.rows_inserted == 1
+
+        cur = mock_db.mock_conn.cursors[-1]
+        insert_driver_params = cur.get_params_for_query("INSERT INTO `drivers`")
+        assert len(insert_driver_params) == 0
+
+    # 21. Jan 2026 file schema with Vech No and Vendor at the end
+    def test_jan_2026_file_schema_import(self, make_workbook):
+        jan_headers = [
+            "Received",
+            "Sl.No.",
+            "Coordinator",
+            "Guest",
+            "Guest Mobile No.",
+            "Travel Date",
+            "From",
+            "To",
+            "Start Time",
+            "Return Time",
+            "Reason",
+            "Driver",
+            "Contact",
+            "Vech No",
+            "Vendor",
+        ]
+        file_path = make_workbook(
+            {
+                "Wed 14 Jan": [
+                    jan_headers,
+                    [
+                        True,
+                        1,
+                        "Dir Office",
+                        "Dr. Roy",
+                        "9876543210",
+                        "2026-01-14",
+                        "Airport",
+                        "GIM",
+                        "10:00",
+                        "12:00",
+                        "Campus Visit",
+                        "Yashwant",
+                        "7249373208",
+                        "GA 07 T 2969",
+                        "Lalu",
+                    ],
+                ],
+            }
+        )
+        service, mock_db = self._create_service()
+        res = service.import_workbook(file_path)
+
+        assert res.status == "SUCCESS"
+        assert res.rows_read == 1
+        assert res.rows_validated == 1
+        assert res.rows_inserted == 1
+
+        cur = mock_db.mock_conn.cursors[-1]
+        params = cur.get_params_for_query("bookings")
+        assert len(params) == 1
+        row = params[0]
+        # Column 0: received
+        assert row[0] is True
+        # Column 1: sl_no
+        assert row[1] == 1
+        # Column 2: coordinator
+        assert row[2] == "Dir Office"
+        # Column 3: guest_name
+        assert row[3] == "Dr. Roy"
+        # Column 13: vehicle_type (from Vech No)
+        assert row[13] == "GA 07 T 2969"
+        # Column 14: company (from Vendor, at the end of the schema)
+        assert row[14] == "Lalu"
+
 
 
