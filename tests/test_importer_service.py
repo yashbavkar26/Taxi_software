@@ -601,5 +601,23 @@ class TestExcelImportService:
         # Column 14: company (from Vendor, at the end of the schema)
         assert row[14] == "Lalu"
 
+    def test_bookings_template_file(self):
+        """Verify the generated bookings_template.xlsx file imports cleanly with 0 errors."""
+        template_path = Path("bookings_template.xlsx")
+        assert template_path.exists(), "bookings_template.xlsx must exist"
+
+        service, mock_db = self._create_service()
+        res = service.import_workbook(template_path, dry_run=True)
+
+        assert res.status == "DRY_RUN"
+        assert len(res.errors) == 0
+        assert res.rows_validated == 38
+        assert res.rows_skipped == 57
+        sheet_names = [s.sheet_name for s in res.sheets_processed]
+        assert "Contacts" in sheet_names
+        assert "Bookings" in sheet_names
+        assert "Sample" in sheet_names
+
+
 
 

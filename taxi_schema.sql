@@ -71,10 +71,12 @@ CREATE TABLE IF NOT EXISTS masterfile (
     amt DECIMAL(10, 2) DEFAULT 0.00,
     guest_name VARCHAR(255),
     total_amt DECIMAL(10, 2) GENERATED ALWAYS AS (COALESCE(amt, 0) + COALESCE(toll, 0) + COALESCE(night, 0)) STORED,
+    payment_details BOOLEAN DEFAULT FALSE,
     in_time TIME,
     out_time TIME,
     driver_name VARCHAR(255),
-    from_to VARCHAR(255)
+    places VARCHAR(255),
+    payment_date DATE
 );
 
 -- --------------------------------------------------------
