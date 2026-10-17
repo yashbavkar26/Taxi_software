@@ -8,20 +8,32 @@ from app.modules.vendors.sync_service import sync_all_vendors, watch_and_sync
 
 
 def main(argv=None) -> int:
+    # Ensure stdout/stderr are redirected when running under pythonw.exe
+    if sys.stdout is None:
+        try:
+            sys.stdout = open("vendor_sync.log", "a", encoding="utf-8")
+        except Exception:
+            pass
+    if sys.stderr is None:
+        try:
+            sys.stderr = open("vendor_sync.log", "a", encoding="utf-8")
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(
         description="Synchronize masterfile trips into individual vendor Excel files."
     )
     parser.add_argument(
         "--masterfile",
         type=str,
-        default="masterfile_template.xlsx",
-        help="Path to the masterfile Excel workbook (default: masterfile_template.xlsx).",
+        default=None,
+        help="Path to the masterfile Excel workbook (default: auto-detected dynamically).",
     )
     parser.add_argument(
         "--out-dir",
         type=str,
-        default=".",
-        help="Directory to save vendor workbooks (default: current directory / root).",
+        default=None,
+        help="Directory to save vendor workbooks (default: same directory as masterfile).",
     )
     parser.add_argument(
         "--watch",
@@ -38,7 +50,6 @@ def main(argv=None) -> int:
         )
         return 0
 
-    print(f"Synchronizing vendor files from '{args.masterfile}'...")
     summary = sync_all_vendors(
         masterfile_path=args.masterfile,
         output_dir=args.out_dir,

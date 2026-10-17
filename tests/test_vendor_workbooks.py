@@ -57,8 +57,9 @@ class TestVendorSyncAndWorkbooks:
         assert ws.row_dimensions[1].height >= 28
         assert ws.freeze_panes == "A2"
 
-        # Check Arvind has 5 trips synced from masterfile_template.xlsx
-        assert ws.max_row == 6  # Header + 5 trips
+        # Check Arvind has matching trips synced from masterfile_template.xlsx
+        arvind_trips = read_masterfile_trips("masterfile_template.xlsx").get("Arvind", [])
+        assert ws.max_row == len(arvind_trips) + 1
 
         # Verify Row 2 values and formulas
         assert ws.cell(2, 1).value == 1

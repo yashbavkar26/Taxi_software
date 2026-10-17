@@ -246,3 +246,8 @@ $RECYCLE.BIN/
 # IDEs and local editor settings
 .vscode/
 .idea/
+
+# Vendor auto-sync operational files
+vendor_sync.log
+vendor_sync.pid
+vendor_sync.lock

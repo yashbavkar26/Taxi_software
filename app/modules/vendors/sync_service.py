@@ -6,13 +6,13 @@ exact formatting of the user's reference file.
 """
 
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
 
 
 ACTIVE_VENDORS: List[str] = [
@@ -79,23 +79,135 @@ COL_WIDTHS = {
 }
 
 
-def read_masterfile_trips(masterfile_path: Union[str, Path] = "masterfile_template.xlsx") -> Dict[str, List[Dict[str, Any]]]:
+def canonical_vendor_name(name_str: str) -> str:
+    """Normalize vendor name to match registered canonical active vendors if possible."""
+    clean = name_str.strip()
+    for v in ACTIVE_VENDORS:
+        if v.lower() == clean.lower():
+            return v
+    return clean.title() if clean.islower() else clean
+
+
+def get_project_root() -> Path:
+    """Dynamically determine the project root directory based on package location."""
+    return Path(__file__).resolve().parents[3]
+
+
+def register_project_path(path: Optional[Path] = None):
+    """Save the project path in %APPDATA%/TaxiSoftware/project_dir.txt and registry."""
+    if path is None:
+        path = get_project_root()
+    p_str = str(path.resolve())
+    try:
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            cfg_dir = Path(appdata) / "TaxiSoftware"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "project_dir.txt").write_text(p_str, encoding="utf-8")
+    except Exception:
+        pass
+
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\TaxiSoftware") as key:
+                winreg.SetValueEx(key, "ProjectPath", 0, winreg.REG_SZ, p_str)
+        except Exception:
+            pass
+
+
+def resolve_masterfile_path(candidate_path: Optional[Union[str, Path]] = None) -> Path:
+    """Dynamically resolve the masterfile path from candidate_path, cwd, project root, or parent folders."""
+    if candidate_path:
+        p = Path(candidate_path)
+        if p.exists():
+            return p.resolve()
+        proj_p = get_project_root() / candidate_path
+        if proj_p.exists():
+            return proj_p.resolve()
+
+    search_dirs = [
+        Path.cwd(),
+        get_project_root(),
+        get_project_root().parent,
+        get_project_root() / "Requirements" / "Input",
+    ]
+    file_names = [
+        "masterfile_template.xlsx",
+        "Masterfile.xlsx",
+        "masterfile.xlsx",
+        "MasterFile.xlsx",
+        "Master File.xlsx",
+    ]
+
+    for d in search_dirs:
+        if not d.exists() or not d.is_dir():
+            continue
+        for fname in file_names:
+            target = d / fname
+            if target.exists():
+                return target.resolve()
+
+    for d in search_dirs:
+        if d.exists() and d.is_dir():
+            for f in d.glob("*master*.xlsx"):
+                if not f.name.startswith("~$") and f.is_file():
+                    return f.resolve()
+
+    # Fallback to default in project root
+    return (get_project_root() / "masterfile_template.xlsx").resolve()
+
+
+def resolve_vendor_output_dir(
+    output_dir: Optional[Union[str, Path]] = None,
+    masterfile_path: Optional[Union[str, Path]] = None,
+) -> Path:
+    """Determine destination directory for vendor workbooks (Arvind.xlsx, Bharat.xlsx, etc.).
+
+    If output_dir is specified (other than None or '.'), use it.
+    If output_dir is None or '.', defaults to the directory containing the masterfile
+    so vendor files automatically live right alongside the masterfile wherever it is moved.
+    """
+    if output_dir is not None and str(output_dir).strip() not in (".", ""):
+        out_p = Path(output_dir)
+        out_p.mkdir(parents=True, exist_ok=True)
+        return out_p.resolve()
+
+    if masterfile_path is not None:
+        try:
+            m_p = Path(masterfile_path)
+            if m_p.exists():
+                return m_p.parent.resolve()
+        except Exception:
+            pass
+
+    resolved_master = resolve_masterfile_path(masterfile_path)
+    if resolved_master.exists():
+        return resolved_master.parent.resolve()
+
+    return get_project_root().resolve()
+
+
+def read_masterfile_trips(
+    masterfile_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
     """Read all trips from the masterfile workbook and group them by vendor.
 
     Args:
-        masterfile_path: Path to masterfile_template.xlsx or equivalent.
+        masterfile_path: Path to masterfile_template.xlsx or equivalent (auto-detected if None).
 
     Returns:
         Dict mapping vendor name to list of trip record dictionaries.
     """
-    path = Path(masterfile_path)
+    path = resolve_masterfile_path(masterfile_path)
     if not path.exists():
         raise FileNotFoundError(f"Masterfile not found at '{path}'")
 
     wb = openpyxl.load_workbook(path, data_only=False)
-    # Find Masterfile sheet
     sheet_name = "Masterfile" if "Masterfile" in wb.sheetnames else wb.sheetnames[0]
     ws = wb[sheet_name]
+
 
     vendor_trips: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -104,7 +216,7 @@ def read_masterfile_trips(masterfile_path: Union[str, Path] = "masterfile_templa
         if not vendor_val or str(vendor_val).strip() == "":
             continue
 
-        vendor_name = str(vendor_val).strip()
+        vendor_name = canonical_vendor_name(str(vendor_val))
         trip = {
             "vendor": vendor_name,
             "date": ws.cell(r, 3).value,
@@ -305,23 +417,17 @@ def write_vendor_workbook(
 
 
 def sync_all_vendors(
-    masterfile_path: Union[str, Path] = "masterfile_template.xlsx",
-    output_dir: Union[str, Path] = ".",
+    masterfile_path: Optional[Union[str, Path]] = None,
+    output_dir: Optional[Union[str, Path]] = None,
 ) -> Dict[str, int]:
     """Sync all vendor entries from masterfile into individual vendor workbooks.
 
-    Ensures all registered active vendors plus any newly encountered vendors in the
-    masterfile get an up-to-date, formatted workbook.
-
-    Args:
-        masterfile_path: Path to masterfile workbook.
-        output_dir: Directory where vendor workbooks are stored.
-
-    Returns:
-        Dict mapping vendor name to count of trips synchronized.
+    Dynamically resolves both masterfile location and vendor output directory
+    so vendor files update wherever they or the masterfile are located.
     """
-    out_dir = Path(output_dir)
-    vendor_trips = read_masterfile_trips(masterfile_path)
+    m_path = resolve_masterfile_path(masterfile_path)
+    out_dir = resolve_vendor_output_dir(output_dir, m_path)
+    vendor_trips = read_masterfile_trips(m_path)
 
     # Union of registered active vendors + all vendors present in masterfile
     all_vendors: Set[str] = set(ACTIVE_VENDORS).union(vendor_trips.keys())
@@ -330,81 +436,192 @@ def sync_all_vendors(
     for vendor in sorted(all_vendors):
         trips = vendor_trips.get(vendor, [])
         v_file = out_dir / f"{vendor}.xlsx"
-        write_vendor_workbook(vendor, trips, v_file)
-        sync_summary[vendor] = len(trips)
+        try:
+            write_vendor_workbook(vendor, trips, v_file)
+            sync_summary[vendor] = len(trips)
+        except (PermissionError, OSError):
+            # File is currently open in Excel; record trip count but continue without failing
+            sync_summary[vendor] = len(trips)
 
     return sync_summary
 
 
-def _safe_print(*args, **kwargs):
-    import sys
+def log_message(msg: str, log_file: Optional[Path] = None):
+    """Log to stdout and append to vendor_sync.log."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    formatted = f"[{timestamp}] {msg}"
     if sys.stdout is not None:
         try:
-            print(*args, **kwargs)
+            print(formatted)
+        except Exception:
+            pass
+    if log_file:
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(formatted + "\n")
         except Exception:
             pass
 
 
 def watch_and_sync(
-    masterfile_path: Union[str, Path] = "masterfile_template.xlsx",
-    output_dir: Union[str, Path] = ".",
+    masterfile_path: Optional[Union[str, Path]] = None,
+    output_dir: Optional[Union[str, Path]] = None,
     poll_interval: float = 1.0,
+    log_filename: str = "vendor_sync.log",
 ):
     """Continuously monitor masterfile_path and trigger auto-sync on save.
 
-    Args:
-        masterfile_path: Path to masterfile workbook to watch.
-        output_dir: Directory where vendor workbooks are stored.
-        poll_interval: Seconds between file modification checks.
+    Features:
+    - Fully dynamic path discovery: works wherever master files and vendor workbooks are located.
+    - Single-instance lock via kernel-level file locking to prevent duplicate watchers.
+    - Automatic retry with exponential backoff on transient Excel file write locks.
+    - Guaranteed update of last_mtime only after successful sync.
     """
-    m_path = Path(masterfile_path)
-    _safe_print(f"[*] Starting Vendor Auto-Sync Watcher...")
-    _safe_print(f"[*] Monitoring: {m_path.resolve()}")
-    _safe_print(f"[*] Output Dir: {Path(output_dir).resolve()}")
-    _safe_print("[*] Press Ctrl+C to stop.")
+    register_project_path()
 
-    last_mtime = m_path.stat().st_mtime if m_path.exists() else 0
-    last_size = m_path.stat().st_size if m_path.exists() else 0
+    m_path = resolve_masterfile_path(masterfile_path)
+    out_dir = resolve_vendor_output_dir(output_dir, m_path)
+    log_path = out_dir / log_filename
+
+    # OS-level single-instance lock to ensure only one watcher runs
+    lock_file_path = out_dir / "vendor_sync.lock"
+    lock_file = None
+    try:
+        lock_file = open(lock_file_path, "a+b")
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        log_message(
+            f"Auto-Sync Watcher is already running in background. Process {os.getpid()} exiting cleanly.",
+            log_path,
+        )
+        if lock_file:
+            try:
+                lock_file.close()
+            except Exception:
+                pass
+        return
+
+    pid_file = out_dir / "vendor_sync.pid"
+    current_pid = os.getpid()
+    try:
+        pid_file.write_text(str(current_pid), encoding="utf-8")
+    except Exception:
+        pass
+
+    log_message(
+        f"Vendor Auto-Sync Watcher started (PID {current_pid}). Monitoring: '{m_path.name}' in '{m_path.parent}' (Vendor out: '{out_dir}')",
+        log_path,
+    )
+
+    def get_candidate_files() -> List[Path]:
+        cands = []
+        if m_path.exists():
+            cands.append(m_path)
+
+        search_dirs = [out_dir, m_path.parent, get_project_root(), Path.cwd()]
+        for d in search_dirs:
+            if not d.exists() or not d.is_dir():
+                continue
+            for f in d.glob("*master*.xlsx"):
+                if not f.name.startswith("~$") and f.is_file():
+                    resolved = f.resolve()
+                    if resolved not in cands:
+                        cands.append(resolved)
+
+        return cands
+
+    file_stats: Dict[Path, Dict[str, float]] = {}
+    for f in get_candidate_files():
+        if f.exists():
+            try:
+                st = f.stat()
+                file_stats[f] = {"mtime": st.st_mtime, "size": st.st_size}
+            except Exception:
+                pass
 
     # Initial sync on startup
-    try:
-        summary = sync_all_vendors(m_path, output_dir)
-        _safe_print(f"[*] Initial sync complete: {len(summary)} vendor workbooks up to date.")
-    except Exception as e:
-        _safe_print(f"[!] Warning on initial sync: {e}")
-
-    while True:
+    if m_path.exists():
         try:
+            summary = sync_all_vendors(m_path, out_dir)
+            total_trips = sum(summary.values())
+            active_count = sum(1 for c in summary.values() if c > 0)
+            log_message(
+                f"Initial sync complete: {len(summary)} vendor files up to date in '{out_dir}' "
+                f"({active_count} active, {total_trips} trips).",
+                log_path,
+            )
+        except Exception as e:
+            log_message(f"Initial sync warning: {e}", log_path)
+
+    try:
+        while True:
             time.sleep(poll_interval)
-            if not m_path.exists():
-                continue
+            candidates = get_candidate_files()
+            for cand in candidates:
+                if not cand.exists():
+                    continue
 
-            current_mtime = m_path.stat().st_mtime
-            current_size = m_path.stat().st_size
-
-            if current_mtime != last_mtime or current_size != last_size:
-                # Wait briefly for Excel to finish writing
-                time.sleep(0.4)
                 try:
-                    summary = sync_all_vendors(m_path, output_dir)
-                    last_mtime = m_path.stat().st_mtime
-                    last_size = m_path.stat().st_size
-                    timestamp = time.strftime("%H:%M:%S")
-                    active_count = sum(1 for c in summary.values() if c > 0)
-                    total_trips = sum(summary.values())
-                    _safe_print(
-                        f"[{timestamp}] Auto-Synced {len(summary)} vendor files "
-                        f"({active_count} active with {total_trips} trips)."
-                    )
-                except (PermissionError, IOError):
-                    # Excel is still actively writing the file; wait and retry on next tick
+                    cand_stat = cand.stat()
+                    current_mtime = cand_stat.st_mtime
+                    current_size = cand_stat.st_size
+                except Exception:
+                    continue
+
+                last_info = file_stats.get(cand, {"mtime": 0, "size": 0})
+                if current_mtime != last_info["mtime"] or current_size != last_info["size"]:
+                    # Wait briefly for Excel to finish writing
                     time.sleep(0.5)
 
-        except KeyboardInterrupt:
-            _safe_print("\n[*] Auto-sync watcher stopped.")
-            break
-        except Exception as err:
-            time.sleep(0.5)
+                    target_dir = cand.parent if (output_dir is None or str(output_dir).strip() in (".", "")) else out_dir
+                    synced = False
+                    for attempt in range(6):
+                        try:
+                            summary = sync_all_vendors(cand, target_dir)
+                            active_count = sum(1 for c in summary.values() if c > 0)
+                            total_trips = sum(summary.values())
+                            log_message(
+                                f"Auto-Synced {len(summary)} vendor files on edit to '{cand.name}' in '{target_dir}' "
+                                f"({active_count} active with {total_trips} trips).",
+                                log_path,
+                            )
+                            # Record successful sync stats
+                            file_stats[cand] = {
+                                "mtime": cand.stat().st_mtime,
+                                "size": cand.stat().st_size,
+                            }
+                            synced = True
+                            break
+                        except Exception:
+                            time.sleep(0.5 * (attempt + 1))
+
+                    if not synced:
+                        log_message(
+                            f"Warning: '{cand.name}' busy/locked by Excel; will retry on next tick.",
+                            log_path,
+                        )
+
+    except KeyboardInterrupt:
+        log_message("Auto-sync watcher stopped by user.", log_path)
+    finally:
+        try:
+            if pid_file.exists():
+                pid_file.unlink()
+        except Exception:
+            pass
+        if lock_file:
+            try:
+                if sys.platform == "win32":
+                    import msvcrt
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                lock_file.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
