@@ -39,15 +39,23 @@ Taxi Software/
 │   │   ├── dutyslips/         # [Ready for Duty Slip Entry & KM Verification]
 │   │   ├── billing/           # [Ready for Bill Book, Vouchers, GST Reports]
 │   │   ├── messaging/         # [Ready for Automated Driver & Guest Texts]
-│   │   └── vendors/           # [Ready for Vendor Databook & Annexures]
+│   │   └── vendors/           # Vendor Databook, Masterfile & Annexures
+│   │       ├── schema.py      # Masterfile table schema & header aliases
+│   │       ├── template.py    # Masterfile template generator (Excel)
+│   │       └── vendor_generator.py # Live-syncing vendor workbook generator
 │   │
 │   └── cli/                   # Command-line entry points
-│       └── import_bookings.py # CLI: python -m app.cli.import_bookings
+│       ├── import_bookings.py       # CLI: python -m app.cli.import_bookings
+│       └── generate_vendor_files.py # CLI: python -m app.cli.generate_vendor_files
 │
-├── tests/                     # Unit and integration test suite (48 tests)
+├── tests/                     # Unit and integration test suite (84 tests)
 ├── requirements.txt
 ├── .env.example
 ├── taxi_schema.sql
+├── bookings_template.xlsx     # Generated bookings workbook template
+├── masterfile_template.xlsx   # Generated masterfile workbook template
+├── vendor_template.xlsx       # Live-syncing vendor template with FILTER formula
+├── Arvind.xlsx ... Yogesh.xlsx# 14 pre-generated vendor workbooks
 └── README.md
 ```
 
@@ -171,6 +179,40 @@ else:
 
 ---
 
+## Live Vendor Synchronization System (Excel Native)
+
+Each vendor's trip records are dynamically synced from `masterfile_template.xlsx` using native Excel dynamic array formulas:
+
+### 1. How It Works
+- **Zero Scripts at Runtime**: In Microsoft Excel, opening `masterfile_template.xlsx` alongside any vendor workbook (e.g. `Arvind.xlsx`) updates trips and totals **in real time**.
+- **Dynamic Array Formula (Cell A7)**:
+  ```excel
+  =IF(OR(ISBLANK($B$2),$B$2=""),"Please select a vendor in cell B2",FILTER('[masterfile_template.xlsx]Masterfile'!$A$2:$T$5000,'[masterfile_template.xlsx]Masterfile'!$B$2:$B$5000=$B$2,"No trips recorded for "&$B$2))
+  ```
+- **Live Summary KPI Cards (Rows 3–4)**:
+  - **TOTAL TRIPS**: `=COUNTIF('[masterfile_template.xlsx]Masterfile'!$B$2:$B$5000, $B$2)`
+  - **TOTAL DISTANCE**: `=SUMIFS('[masterfile_template.xlsx]Masterfile'!$H$2:$H$5000, '[masterfile_template.xlsx]Masterfile'!$B$2:$B$5000, $B$2)`
+  - **TOTAL AMOUNT**: `=SUMIFS('[masterfile_template.xlsx]Masterfile'!$N$2:$N$5000, '[masterfile_template.xlsx]Masterfile'!$B$2:$B$5000, $B$2)`
+  - **PAYMENT PENDING**: `=COUNTIFS('[masterfile_template.xlsx]Masterfile'!$B$2:$B$5000, $B$2, '[masterfile_template.xlsx]Masterfile'!$O$2:$O$5000, FALSE)`
+
+### 2. Adding a New Vendor (Zero Code)
+1. Copy `vendor_template.xlsx` in the root directory.
+2. Rename the file to `<VendorName>.xlsx` (e.g. `Rahul.xlsx`).
+3. Open the file and select or type the vendor name in cell **B2**. All records spill instantly.
+
+### 3. Generating Vendor Files via CLI
+Generate all 14 active vendor files and `vendor_template.xlsx`:
+```bash
+python -m app.cli.generate_vendor_files
+```
+
+Generate a single vendor file:
+```bash
+python -m app.cli.generate_vendor_files --vendor Arvind
+```
+
+---
+
 ## Running Automated Tests
 
 Run the complete test suite:
@@ -179,4 +221,4 @@ Run the complete test suite:
 pytest -v
 ```
 
-All 48 test cases pass in ~0.5s.
+All 84 test cases pass in ~3s.
